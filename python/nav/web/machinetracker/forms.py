@@ -26,16 +26,28 @@ class MachineTrackerForm(forms.Form):
     """General fields for forms in machinetracker"""
     dns = forms.BooleanField(required=False, initial=False,
                              help_text="Show dns (if any)")
-    days = forms.IntegerField(initial=7,
+    days = forms.IntegerField(initial=7, required=False,
                               widget=forms.TextInput(attrs={'size': 3}),
                               help_text="Days back in time to search")
+    start = forms.DateTimeField(required=False, help_text="Start date of query")
+    end = forms.DateTimeField(required=False, help_text="End date of query")
+    time_mode_choices = [
+        ("machinetracker-filter-days", "Last days"),
+        ("machinetracker-filter-active", "Only Active"),
+        ("machinetracker-filter-custom", "Custom"),
+    ]
+    time_mode = forms.ChoiceField(choices=time_mode_choices,
+                                  initial="machinetracker-filter-days")
+
+    def __init__(self, *args, **kwargs):
+        super(MachineTrackerForm, self).__init__(*args, **kwargs)
+        self.fields['start'].widget.attrs['class'] = 'datepicker'
+        self.fields['end'].widget.attrs['class'] = 'datepicker'
 
     def clean_days(self):
         """Clean the days fields"""
         data = int(self.cleaned_data['days'])
-        if data < -1:
-            # -1 has a specific meaning of "only active", for backwards
-            # compatibility. Anything else is an error.
+        if data < 0:
             raise forms.ValidationError("I can't see into the future. "
                                         "Please enter a positive number.")
 
@@ -45,6 +57,21 @@ class MachineTrackerForm(forms.Form):
             raise forms.ValidationError(
                 "They didn't have computers %s days ago" % data)
 
+        return data
+
+    def clean(self):
+        data = self.cleaned_data.copy()
+        if data['time_mode'] == 'machinetracker-filter-days':
+            if not data['days']:
+                raise forms.ValidationError(
+                    'Days must be given if time mode is Last Days')
+            data['start'] = date.today() - timedelta(days=data['days'])
+            data['end'] = date.today()
+            data['time_mode'] = 'machinetracker-filter-custom'
+        if data['time_mode'] == 'machinetracker-filter-custom':
+            if not data['start'] or not data['end']:
+                raise forms.ValidationError(
+                    'Both start and end must be given')
         return data
 
 

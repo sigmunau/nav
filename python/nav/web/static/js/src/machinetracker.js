@@ -1,4 +1,4 @@
-require(["libs/jquery.tablesorter.min", "libs/jquery"], function (tablesorter) {
+require(["libs/jquery.tablesorter.min", "libs/jquery", "libs/jquery-ui-timepicker-addon"], function (tablesorter) {
 
     var ns = "nav.machinetracker",
         elementIds = ['id_netbios', 'id_dns'],
@@ -100,6 +100,17 @@ require(["libs/jquery.tablesorter.min", "libs/jquery"], function (tablesorter) {
         }
 
         addLocalStateSettings();
+
+        $('#id_time_mode').change(function() {
+            var value = $('#id_time_mode').val();
+            $('.machinetracker-filter-option').hide();
+            $('.' + value).show();
+        });
+
+        $('.datetimepicker').datetimepicker({
+            'dateFormat': 'yy-mm-dd',
+            'timeFormat': 'HH:mm'
+        });
 
     });
 
