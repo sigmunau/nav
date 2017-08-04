@@ -210,6 +210,7 @@ class AdjacencyReducer(AdjacencyAnalyzer):
 
     def _visit_unvisited(self, unvisited):
         for port in unvisited:
+            hits = []
             for source, dest, proto in self.graph.edges(port, keys=True):
                 _logger.debug("Considering %s %s source %s",
                               source, dest, proto)
@@ -221,10 +222,19 @@ class AdjacencyReducer(AdjacencyAnalyzer):
 
                 remote_port = self.find_return_port(source, dest)
                 if remote_port:
-                    _logger.debug("Found connection %s -> %s because of good return path",
-                                  source, remote_port)
-                    self.connect_ports(source, remote_port)
-                    return True
+                    hits.append([source, remote_port])
+            if len(hits) > 1:
+                _logger.warning("Found multiple hits")
+                for source, dest in hits:
+                    _logger.debug("%s %s(degree %d)",
+                                  source, dest, self.graph.out_degree(dest))
+#                assert False
+            elif len(hits) == 1:
+                source, remote_port = hits[0]
+                _logger.debug("Found connection %s -> %s because of good return path",
+                              source, remote_port)
+                self.connect_ports(source, remote_port)
+                return True
             _logger.debug("Found no connection for %s", port)
         return False
 
