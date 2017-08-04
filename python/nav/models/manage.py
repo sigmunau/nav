@@ -1612,6 +1612,27 @@ class Interface(models.Model):
         return Interface.objects.filter(
             aggregators__interface=self).order_by('ifindex').first()
 
+    def guess_aggregator(self):
+        """Returns a likely aggregator for this interface utilizing stacking
+        information"""
+        aggr = self.get_aggregator()
+        if aggr:
+            return aggr
+        above = list(self.above_me())
+
+        # HP Switches that does not support IEEE8023-LAG-MIB put
+        # aggregator in stacking info
+        if len(above) == 1 and above[0].is_swport():
+            return above[0]
+
+        # Some juniper devices put one or more logical interface stacked between
+        # the physical interface and the aggregator
+        for logical in above:
+            aggr = logical.get_aggregator()
+            if aggr:
+                return aggr
+        return None
+
     def get_bundled_interfaces(self):
         """Returns the interfaces that are bundled on this interface"""
         return Interface.objects.filter(bundled__aggregator=self)

@@ -39,8 +39,10 @@ Port nodes can have outgoing edges to other Port nodes, or to Netbox nodes
 """
 # pylint: disable=R0903
 
+from itertools import groupby
+
 import networkx as nx
-from nav.models.manage import AdjacencyCandidate
+from nav.models.manage import AdjacencyCandidate, Interface
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -152,6 +154,7 @@ class AdjacencyReducer(AdjacencyAnalyzer):
         self.result = nx.DiGraph(name="network adjacency candidates")
         self._reduce_discovery_protocol(LLDP)
         self._reduce_discovery_protocol(CDP)
+        self._resolve_aggregators()
         self._reduce_cam()
         self.graph = self.result
 
@@ -238,6 +241,36 @@ class AdjacencyReducer(AdjacencyAnalyzer):
             _logger.debug("Found no connection for %s", port)
         return False
 
+    def _resolve_aggregators(self):
+        def netbox_pair(edge):
+            source, dest = edge
+            return source[0], dest[0]
+        undirected = nx.Graph()
+        undirected.add_edges_from(self.result.edges())
+        cand_edges = sorted(self.result.edges(), key=netbox_pair)
+        for (source, dest), edges in groupby(cand_edges, key=netbox_pair):
+            edges = list(edges)
+            if len(edges) <= 1:
+                continue
+            source_ports = [Interface.objects.get(pk=e[0][1]) for e in edges]
+            dest_ports = [Interface.objects.get(pk=e[1][1]) for e in edges]
+            source_aggrs = {i.guess_aggregator() for i in source_ports}
+            if None in source_aggrs:
+                source_aggrs.remove(None)
+            dest_aggrs = {i.guess_aggregator() for i in dest_ports}
+            if None in dest_aggrs:
+                dest_aggrs.remove(None)
+            if len(source_aggrs) == 1 and len(dest_aggrs) == 1:
+                source_aggr = source_aggrs.pop()
+                dest_aggr = dest_aggrs.pop()
+                self.connect_ports(Port((source, source_aggr.id)),
+                                   Port((dest, dest_aggr.id)))
+                _logger.debug("Found connection %s -> %s based on aggregations",
+                              source_aggr, dest_aggr)
+            else:
+                _logger.debug("Failed to resolve aggregators %s %s",
+                              source_aggrs, dest_aggrs)
+
     def connect_ports(self, i, j):
         """Add connection between a and b to result.
 
@@ -245,9 +278,9 @@ class AdjacencyReducer(AdjacencyAnalyzer):
         graph, as they are now completely processed
 
         """
-        if type(i) is Port:
+        if type(i) is Port and i in self.graph:
             self.graph.remove_node(i)
-        if type(j) is Port:
+        if type(j) is Port and j in self.graph:
             self.graph.remove_node(j)
 
         self.result.add_edge(i, j)
